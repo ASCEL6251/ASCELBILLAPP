@@ -16,19 +16,30 @@ function safeName(s: string) {
   return s.replace(/[^a-z0-9\-_]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
 }
 
-export async function makePdf(biz: Business, inv: FullInvoice, template?: string, color?: string) {
-  const { uri } = await Print.printToFileAsync(opts(biz, inv, template, color));
-  // Give the file a human name: "Invoice_INV-12_Party.pdf"
+/**
+ * Renders HTML to a PDF in the app's own cache under a readable name.
+ * We ask for base64 and write the bytes ourselves: expo-print's own output path is not
+ * always readable by the app (Expo Go on Android rejects moving or sharing it).
+ */
+export async function savePdf(html: string, fileName: string, size: { width: number; height: number }) {
+  const { uri, base64 } = await Print.printToFileAsync({ html, ...size, base64: true });
   try {
-    const kind = inv.type === 'estimate' ? 'Estimate' : inv.type === 'purchase' ? 'Bill' : 'Invoice';
-    const name = `${safeName(`${kind}_${inv.number}_${inv.party_name || 'Cash'}`)}.pdf`;
-    const target = new File(Paths.cache, name);
+    const target = new File(Paths.cache, `${safeName(fileName) || 'Document'}.pdf`);
     if (target.exists) target.delete();
-    await new File(uri).move(target);
+    target.create();
+    if (base64) await target.write(base64, { encoding: 'base64' });
+    else await new File(uri).copy(target);
     return target.uri;
   } catch {
     return uri;
   }
+}
+
+export async function makePdf(biz: Business, inv: FullInvoice, template?: string, color?: string) {
+  const { html, ...size } = opts(biz, inv, template, color);
+  // A human name: "Invoice_INV-12_Party.pdf"
+  const kind = inv.type === 'estimate' ? 'Estimate' : inv.type === 'purchase' ? 'Bill' : 'Invoice';
+  return savePdf(html, `${kind}_${inv.number}_${inv.party_name || 'Cash'}`, size);
 }
 
 export async function sharePdf(biz: Business, inv: FullInvoice, template?: string, color?: string) {

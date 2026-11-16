@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Card, ListRow, Mark, Row, Section, T } from '@/components/ui';
+import { countRows, exportBackup, pickBackup, restoreBackup } from '@/db/backup';
 import { getBusiness, resetAll } from '@/db/repo';
 import { useData } from '@/lib/hooks';
 import { colors, radius } from '@/lib/theme';
@@ -29,6 +30,44 @@ export default function More() {
         },
       ],
     );
+
+  const backup = async () => {
+    try {
+      await exportBackup(db, biz?.name ?? '');
+    } catch (e: any) {
+      Alert.alert('Backup failed', String(e?.message ?? e));
+    }
+  };
+
+  const restore = async () => {
+    try {
+      const data = await pickBackup();
+      if (!data) return;
+      const c = countRows(data);
+      const when = new Date(data.exportedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+      Alert.alert(
+        'Restore this backup?',
+        `Saved on ${when}: ${c.invoices} invoices, ${c.parties} parties, ${c.items} items. It replaces everything currently on this device.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Restore',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await restoreBackup(db, data);
+                router.replace('/');
+              } catch (e: any) {
+                Alert.alert('Restore failed', `Your data was not changed. ${String(e?.message ?? e)}`);
+              }
+            },
+          },
+        ],
+      );
+    } catch (e: any) {
+      Alert.alert('Could not open backup', String(e?.message ?? e));
+    }
+  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.paper }} contentContainerStyle={{ padding: 16, paddingTop: insets.top + 6, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
@@ -77,6 +116,8 @@ export default function More() {
       <Section title="Data">
         <Card style={{ padding: 6 }}>
           <ListRow icon="phone-portrait-outline" title="Stored on this device" subtitle="Works fully offline. No account required." />
+          <ListRow icon="cloud-upload-outline" title="Back up data" subtitle="Save a backup file to Drive, Files or WhatsApp" onPress={backup} />
+          <ListRow icon="cloud-download-outline" title="Restore from backup" subtitle="Replace this device's data with a backup file" onPress={restore} />
           <ListRow icon="trash-outline" title="Erase all data" danger onPress={reset} />
         </Card>
       </Section>

@@ -41,8 +41,7 @@
 
   <!-- brand mark -->
   <g transform="translate(72 70)"><g class="rise">
-    <path d="M28 0 L56 50 L0 50 Z" fill="url(#mark)"/>
-    <path d="M28 22 L40 44 L16 44 Z" fill="#142130"/>
+    <g transform="translate(-2 -6) scale(0.6)"><path d="M50 6 L66 38 L34 38 Z" fill="#94BCE3"/><path d="M32 42 L68 42 L70 46 L80 66 L60 66 L50 46 L40 66 L20 66 L30 46 Z" fill="#5980A6"/><path d="M18 70 L38 70 L26 94 L6 94 Z M82 70 L62 70 L74 94 L94 94 Z" fill="#F2F2F3"/></g>
     <text class="t" x="72" y="38" font-size="20" font-weight="600" fill="#94BCE3">Ascelstack</text>
   </g></g>
 

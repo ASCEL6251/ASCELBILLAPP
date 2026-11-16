@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Mark, T, success } from '@/components/ui';
+import { pickBackup, restoreBackup } from '@/db/backup';
 import { updateBusiness } from '@/db/repo';
 import { seedDemo } from '@/db/seed';
 import { colors, fonts, radius } from '@/lib/theme';
@@ -14,7 +15,7 @@ export default function Welcome() {
   const db = useSQLiteContext();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [busy, setBusy] = useState<'start' | 'demo' | null>(null);
+  const [busy, setBusy] = useState<'start' | 'demo' | 'restore' | null>(null);
 
   const start = async () => {
     if (!name.trim()) return Alert.alert('Business name', 'Tell us what your business is called.');
@@ -33,6 +34,20 @@ export default function Welcome() {
     } catch (e: any) {
       setBusy(null);
       Alert.alert('Could not load sample data', String(e?.message ?? e));
+    }
+  };
+
+  const restore = async () => {
+    try {
+      const data = await pickBackup();
+      if (!data) return;
+      setBusy('restore');
+      await restoreBackup(db, data);
+      success();
+      router.replace('/');
+    } catch (e: any) {
+      setBusy(null);
+      Alert.alert('Could not restore', String(e?.message ?? e));
     }
   };
 
@@ -69,6 +84,11 @@ export default function Welcome() {
         <Pressable onPress={demo} disabled={!!busy} style={{ alignItems: 'center', paddingVertical: 16 }}>
           <T v="label" style={{ color: colors.onInk, textDecorationLine: 'underline' }}>
             {busy === 'demo' ? 'Setting up sample shop…' : 'Explore with sample data'}
+          </T>
+        </Pressable>
+        <Pressable onPress={restore} disabled={!!busy} style={{ alignItems: 'center', paddingBottom: 16 }}>
+          <T v="label" style={{ color: colors.tint }}>
+            {busy === 'restore' ? 'Restoring your data…' : 'Restore from a backup'}
           </T>
         </Pressable>
       </ScrollView>

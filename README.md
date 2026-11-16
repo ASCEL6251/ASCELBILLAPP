@@ -65,6 +65,7 @@ Most small sellers in India still bill on paper or in WhatsApp chats. The apps t
 | **Items** | Products and services with HSN codes, GST rate, sale and purchase price, and stock that updates on every sale or purchase. Low-stock alerts. |
 | **Payments** | Payment in and out, partial payments, and invoice status (paid, partial or unpaid) updated automatically. |
 | **Expenses** | Expenses grouped by category, included in profit. |
+| **Backup** | Save every record to one backup file (Drive, Files, WhatsApp) and restore it on any phone, including from the welcome screen of a fresh install. |
 | **Reports** | Profit estimate, sales by party, sales by item, and GST by rate for a chosen period. |
 | **Business profile** | Logo, GSTIN, state, address, bank and UPI details, a drawn signature, invoice prefix and terms. |
 
@@ -153,13 +154,14 @@ src/
 ├── db/
 │   ├── schema.ts             # Tables + migrations (PRAGMA user_version)
 │   ├── repo.ts               # Every SQL query lives here
+│   ├── backup.ts             # JSON backup export / restore (one transaction)
 │   ├── seed.ts               # "Explore with sample data" demo shop
 │   └── types.ts              # Row and domain types
 ├── lib/
 │   ├── theme.ts              # Colours, fonts, radius, shadow tokens
 │   ├── calc.ts               # GST and totals maths
 │   ├── format.ts             # Money (Indian grouping), dates, amount in words
-│   ├── pdf.ts                # Share PDF, print, WhatsApp reminder
+│   ├── pdf.ts                # savePdf, share, print, WhatsApp reminder
 │   └── hooks.ts              # useData: load on focus, reload on change
 └── templates/
     ├── index.ts              # The 8 invoice designs + renderInvoiceHtml
@@ -184,6 +186,10 @@ To change the schema, bump `DATABASE_VERSION` in `src/db/schema.ts` and add a ne
 **Balances.** A party's balance is opening balance + sales − purchases ± payments. "You'll get" is money the party owes you and "You'll give" is money you owe them.
 
 **Templates.** Each design is a function that returns a full HTML page. The same HTML is shown in the WebView preview and printed to PDF, so what you see is what you share. A template declares its palettes, its format (A4 or thermal) and whether it is premium.
+
+**PDF files.** Always create PDFs through `savePdf` in `src/lib/pdf.ts`. It asks expo-print for base64 and writes the file into the app's own cache, because Android (in Expo Go) refuses to share expo-print's raw output path.
+
+**Backup.** `src/db/backup.ts` writes every table to one versioned JSON file (`app`, `format`, `schema`, `tables`). Restore deletes and re-inserts all rows inside one exclusive transaction, so a failed restore leaves data untouched. Columns the current schema doesn't know are skipped, so older backups still restore. The planned Pro cloud backup will upload this same snapshot, encrypted.
 
 **Data loading.** `useData(loader, deps)` runs the loader when a screen gains focus, so lists are always fresh after you come back from an editor.
 
@@ -247,7 +253,7 @@ Deep links help with testing. With Metro running, `exp://127.0.0.1:8081/--/parti
 ```mermaid
 timeline
   title Ascel Bill launch plan
-  Phase 0 · Android ready : Test on Android emulator and devices : App icon, splash, store graphics : Local backup export and import : Crash reporting (Sentry) and privacy policy
+  Phase 0 · Android ready : ✅ Android emulator pass : ✅ App icon and splash : ✅ Local backup export and import : Store graphics, Sentry, privacy policy
   Phase 1 · Play Store : Play Console organisation account : EAS production build (AAB) : Internal, then closed, then production testing
   Phase 2 · Cloud backup : Cloudflare Worker + R2 + D1 : Google sign-in : Encrypted daily snapshots and one-tap restore
   Phase 3 · Pro plan : Google Play Billing : Premium designs and backup unlocked : Restore purchases

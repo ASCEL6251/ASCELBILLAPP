@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
@@ -7,6 +6,7 @@ import { Avatar, Badge, Button, Card, Empty, IconBtn, Row, Screen, T, tap } from
 import { deleteParty, deletePayment, getBusiness, getParty, partyLedger } from '@/db/repo';
 import { dateLabel, money } from '@/lib/format';
 import { useData } from '@/lib/hooks';
+import { savePdf } from '@/lib/pdf';
 import { colors, fonts, radius } from '@/lib/theme';
 import { statementHtml } from '@/templates/statement';
 
@@ -23,7 +23,7 @@ export default function PartyDetail() {
 
   const statement = async () => {
     try {
-      const { uri } = await Print.printToFileAsync({ html: statementHtml(biz, party, rows), width: 595, height: 842 });
+      const uri = await savePdf(statementHtml(biz, party, rows), `Statement_${party.name}`, { width: 595, height: 842 });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
     } catch (e: any) {
       Alert.alert('Could not create statement', String(e?.message ?? e));

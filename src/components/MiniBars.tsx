@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { monthLabel, moneyShort, toISO } from '@/lib/format';
@@ -9,7 +10,7 @@ import { colors, fonts } from '@/lib/theme';
  */
 export function MiniBars({
   series,
-  width = 300,
+  width: widthHint = 300,
   height = 132,
   currency = '₹',
 }: {
@@ -18,6 +19,9 @@ export function MiniBars({
   height?: number;
   currency?: string;
 }) {
+  // Measure the real container: window-based maths drifts on Android.
+  const [measured, setMeasured] = useState(0);
+  const width = measured || widthHint;
   const months: string[] = [];
   const d = new Date();
   d.setDate(1);
@@ -45,7 +49,7 @@ export function MiniBars({
   const bubbleY = Math.max(0, lastTop - bubbleH - 6);
 
   return (
-    <View>
+    <View onLayout={(e) => setMeasured(Math.floor(e.nativeEvent.layout.width))}>
       <Svg width={width} height={height}>
         <Defs>
           <LinearGradient id="barNow" x1="0" y1="0" x2="0" y2="1">
