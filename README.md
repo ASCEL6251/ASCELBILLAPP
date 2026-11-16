@@ -282,4 +282,4 @@ For comparison, a leading competitor charges ₹3,799 to ₹4,799 a year for des
 
 ---
 
-<p align="center"><sub>Made in India by <b>Ascelstack</b> · © 2026 Ascelstack. All rights reserved.</sub></p>
+<p align="center"><sub>Made in India by <b>Ascelstack</b> · © 2026 Ascelstack. All rights reserved. Proprietary and confidential; see <a href="LICENSE">LICENSE</a>.</sub></p>
