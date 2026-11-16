@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-label="Ascel Bill by Ascelstack: GST invoicing for Indian small businesses">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#142130"/>
+      <stop offset="1" stop-color="#1D2D3D"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CFE4F8"/>
+      <stop offset="1" stop-color="#5980A6"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#CFE4F8"/>
+      <stop offset="1" stop-color="#5980A6"/>
+    </linearGradient>
+    <clipPath id="card"><rect width="1200" height="360" rx="28"/></clipPath>
+    <style>
+      .t { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .rise { opacity: 0; animation: rise .9s cubic-bezier(.2,.8,.2,1) forwards; }
+      .d1 { animation-delay: .15s; } .d2 { animation-delay: .35s; } .d3 { animation-delay: .55s; }
+      .d4 { animation-delay: .75s; }
+      @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+      .b { transform-box: fill-box; transform-origin: bottom; transform: scaleY(0); animation: grow 1s cubic-bezier(.2,.8,.2,1) forwards; }
+      .b1 { animation-delay: .4s; } .b2 { animation-delay: .5s; } .b3 { animation-delay: .6s; }
+      .b4 { animation-delay: .7s; } .b5 { animation-delay: .8s; } .b6 { animation-delay: .9s; }
+      @keyframes grow { to { transform: scaleY(1); } }
+      .pulse { transform-box: fill-box; transform-origin: center; animation: pulse 2.4s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity: .9; transform: scale(1); } 50% { opacity: .35; transform: scale(1.35); } }
+      .sheen { animation: sheen 5s ease-in-out infinite; }
+      @keyframes sheen { 0% { transform: translateX(-500px); } 60%,100% { transform: translateX(1400px); } }
+      .float { animation: float 6s ease-in-out infinite; }
+      @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    </style>
+  </defs>
+
+  <g clip-path="url(#card)">
+    <rect width="1200" height="360" fill="url(#bg)"/>
+    <circle cx="1040" cy="40" r="260" fill="#5980A6" opacity=".10"/>
+    <circle cx="140" cy="380" r="200" fill="#94BCE3" opacity=".06"/>
+    <g transform="skewX(-20)"><rect class="sheen" x="0" y="0" width="160" height="360" fill="#ffffff" opacity=".035"/></g>
+  </g>
+
+  <!-- brand mark -->
+  <g transform="translate(72 70)"><g class="rise">
+    <path d="M28 0 L56 50 L0 50 Z" fill="url(#mark)"/>
+    <path d="M28 22 L40 44 L16 44 Z" fill="#142130"/>
+    <text class="t" x="72" y="38" font-size="20" font-weight="600" fill="#94BCE3">Ascelstack</text>
+  </g></g>
+
+  <text class="t rise d1" x="72" y="186" font-size="72" font-weight="700" letter-spacing="-2.5" fill="#F2F2F3">Ascel Bill</text>
+  <text class="t rise d2" x="74" y="232" font-size="24" font-weight="500" fill="#94BCE3">GST invoicing for Indian small businesses.</text>
+  <g class="rise d3 t" font-size="16" font-weight="600">
+    <rect x="72" y="262" width="122" height="36" rx="18" fill="#23374B"/>
+    <text x="133" y="285" text-anchor="middle" fill="#F2F2F3">Offline-first</text>
+    <rect x="206" y="262" width="118" height="36" rx="18" fill="#23374B"/>
+    <text x="265" y="285" text-anchor="middle" fill="#F2F2F3">8 designs</text>
+    <rect x="336" y="262" width="138" height="36" rx="18" fill="#23374B"/>
+    <text x="405" y="285" text-anchor="middle" fill="#F2F2F3">UPI QR + PDF</text>
+  </g>
+
+  <!-- mini sales card -->
+  <g transform="translate(760 64)"><g class="float">
+    <g class="rise d4">
+      <rect width="368" height="232" rx="22" fill="#23374B"/>
+      <circle class="pulse" cx="30" cy="34" r="5" fill="#4CC38A"/>
+      <text class="t" x="46" y="39" font-size="15" font-weight="500" fill="#94BCE3">Sales this month</text>
+      <text class="t" x="24" y="88" font-size="40" font-weight="700" letter-spacing="-1.4" fill="#F2F2F3">₹1,84,250</text>
+      <g transform="translate(24 108)"><g>
+        <rect class="b b1" x="0"   y="56" width="40" height="44" rx="9" fill="#94BCE3" opacity=".25"/>
+        <rect class="b b2" x="54"  y="40" width="40" height="60" rx="9" fill="#94BCE3" opacity=".25"/>
+        <rect class="b b3" x="108" y="64" width="40" height="36" rx="9" fill="#94BCE3" opacity=".25"/>
+        <rect class="b b4" x="162" y="28" width="40" height="72" rx="9" fill="#94BCE3" opacity=".25"/>
+        <rect class="b b5" x="216" y="36" width="40" height="64" rx="9" fill="#94BCE3" opacity=".25"/>
+        <rect class="b b6" x="270" y="6"  width="40" height="94" rx="9" fill="url(#bar)"/>
+      </g></g>
+    </g>
+  </g></g>
+</svg>

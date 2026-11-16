@@ -1,25 +1,43 @@
 {
   "expo": {
-    "name": "ascelbillapp",
-    "slug": "ascelbillapp",
+    "name": "Ascel Bill",
+    "slug": "ascel-bill",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ascelstack.bill"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#1D2D3D",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.ascelstack.bill"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ascel Bill uses your photos to add your business logo."
+        }
+      ]
+    ],
+    "scheme": "ascelbill",
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }
