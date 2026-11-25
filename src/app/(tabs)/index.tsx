@@ -1,246 +1,348 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Alert, FlatList, Image, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { InvoiceCard } from '@/components/InvoiceCard';
-import { MiniBars } from '@/components/MiniBars';
-import { Avatar, Chip, Empty, IconBtn, IconName, Row, SearchBar, T, tap, Button } from '@/components/ui';
-import { dashboardStats, getBusiness, getInvoice, listInvoices } from '@/db/repo';
-import type { DocType, Invoice } from '@/db/types';
-import { money, moneyShort } from '@/lib/format';
+import { useCallback, useMemo, useState } from 'react';
+import { ActionSheetIOS, Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AddTxnSheet } from '@/components/AddTxnSheet';
+import { Glyph } from '@/components/Glyph';
+import { AppHeader, BalanceCard, FabPill, PillTabs, QuickLinks, SectionTitle, TxnCard } from '@/components/kit';
+import { Empty, tap } from '@/components/ui';
+import { deleteInvoice, getBusiness, getInvoice, listInvoices, listParties } from '@/db/repo';
+import type { DocType, Invoice, PartyWithBalance } from '@/db/types';
+import { DOCS, DOC_TYPES } from '@/lib/docs';
+import { dateLabel, money } from '@/lib/format';
 import { useData } from '@/lib/hooks';
-import { sharePdf } from '@/lib/pdf';
-import { colors, fonts, radius, shadow } from '@/lib/theme';
+import { printInvoice, sharePdf } from '@/lib/pdf';
+import { colors, fonts } from '@/lib/theme';
 
-const FILTERS: { v: DocType | 'all'; l: string }[] = [
-  { v: 'all', l: 'All' },
-  { v: 'sale', l: 'Sales' },
-  { v: 'estimate', l: 'Estimates' },
-  { v: 'purchase', l: 'Purchases' },
-];
+type Tab = 'txn' | 'party';
+type PartySort = 'recent' | 'name' | 'amount';
 
-const QUICK: { icon: IconName; label: string; go: () => void }[] = [
-  { icon: 'receipt-outline', label: 'Invoice', go: () => router.push('/invoice/new?type=sale') },
-  { icon: 'document-text-outline', label: 'Estimate', go: () => router.push('/invoice/new?type=estimate') },
-  { icon: 'cash-outline', label: 'Payment', go: () => router.push('/payment?direction=in') },
-  { icon: 'stats-chart-outline', label: 'Reports', go: () => router.push('/reports') },
-];
+const SHORT: Partial<Record<DocType, string>> = {
+  sale: 'Sales',
+  sale_return: 'Credit Notes',
+  estimate: 'Estimates',
+  sale_order: 'Sale Orders',
+  delivery_challan: 'Challans',
+  purchase: 'Purchases',
+  purchase_return: 'Debit Notes',
+  purchase_order: 'Purchase Orders',
+};
 
 export default function Home() {
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const [tab, setTab] = useState<Tab>('txn');
   const [q, setQ] = useState('');
+  const [pq, setPq] = useState('');
   const [type, setType] = useState<DocType | 'all'>('all');
-  const { data, db } = useData(
+  const [sort, setSort] = useState<PartySort>('recent');
+  const [addOpen, setAddOpen] = useState(false);
+
+  const { data, db, reload } = useData(
     async (db) => ({
       biz: await getBusiness(db),
-      stats: await dashboardStats(db),
       invoices: await listInvoices(db, { q, type }),
+      parties: await listParties(db, ''),
     }),
     [q, type],
   );
+  const biz = data?.biz;
+  const cur = biz?.currency ?? '₹';
 
-  const share = async (inv: Invoice) => {
-    try {
-      const full = await getInvoice(db, inv.id);
-      if (full && data) await sharePdf(data.biz, full);
-    } catch (e: any) {
-      Alert.alert('Could not share', String(e?.message ?? e));
+  const totals = useMemo(() => {
+    let get = 0;
+    let give = 0;
+    for (const p of data?.parties ?? []) {
+      if (p.balance > 0) get += p.balance;
+      else give -= p.balance;
+    }
+    return { get, give };
+  }, [data?.parties]);
+
+  const parties = useMemo(() => {
+    const needle = pq.trim().toLowerCase();
+    const list = needle
+      ? (data?.parties ?? []).filter((p) => p.name.toLowerCase().includes(needle) || (p.phone ?? '').includes(needle))
+      : data?.parties ?? [];
+    return sortParties(list, sort);
+  }, [data?.parties, pq, sort]);
+
+  const withFull = useCallback(
+    async (inv: Invoice, fn: (full: NonNullable<Awaited<ReturnType<typeof getInvoice>>>) => Promise<void>) => {
+      try {
+        const full = await getInvoice(db, inv.id);
+        if (full && biz) await fn(full);
+      } catch (e: any) {
+        if (!String(e?.message ?? e).toLowerCase().includes('cancel')) Alert.alert('Something went wrong', String(e?.message ?? e));
+      }
+    },
+    [db, biz],
+  );
+
+  const moreFor = (inv: Invoice) => {
+    const actions: { label: string; run: () => void; destructive?: boolean }[] = [
+      { label: 'Open', run: () => router.push(`/invoice/${inv.id}`) },
+      { label: 'Edit', run: () => router.push(`/invoice/new?id=${inv.id}`) },
+      { label: 'Change Theme', run: () => router.push(`/invoice/preview?id=${inv.id}`) },
+      {
+        label: 'Delete',
+        destructive: true,
+        run: () =>
+          Alert.alert(`Delete ${inv.number}?`, 'This removes the transaction permanently and restores stock. It cannot be undone.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: async () => { await deleteInvoice(db, inv.id); reload(); } },
+          ]),
+      },
+    ];
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: [...actions.map((a) => a.label), 'Cancel'], cancelButtonIndex: actions.length, destructiveButtonIndex: 3, title: `${DOCS[inv.type].label} #${inv.number}` },
+        (i) => actions[i]?.run(),
+      );
+    } else {
+      Alert.alert(`${DOCS[inv.type].label} #${inv.number}`, undefined, [
+        ...actions.map((a) => ({ text: a.label, onPress: a.run, style: a.destructive ? ('destructive' as const) : ('default' as const) })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]);
     }
   };
 
-  const biz = data?.biz;
-  const s = data?.stats;
-  const cur = biz?.currency ?? '₹';
-  const growth = s && s.salesPrev > 0 ? ((s.salesMonth - s.salesPrev) / s.salesPrev) * 100 : null;
+  const balance = (
+    <BalanceCard
+      get={totals.get}
+      give={totals.give}
+      currency={cur}
+      onGet={() => { setSort('amount'); setTab('party'); }}
+      onGive={() => { setSort('amount'); setTab('party'); }}
+    />
+  );
 
-  const header = (
+  const txnHeader = (
     <View>
-      {/* top bar */}
-      <Row style={{ justifyContent: 'space-between', paddingTop: insets.top + 6, paddingBottom: 14 }}>
-        <Pressable onPress={() => router.push('/business')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-          {biz?.logo ? (
-            <Image source={{ uri: biz.logo }} style={{ width: 40, height: 40, borderRadius: 14 }} />
-          ) : (
-            <Avatar name={biz?.name ?? ''} dark />
-          )}
-          <View style={{ flex: 1 }}>
-            <T v="eyebrow">Good {greeting()}</T>
-            <T v="h2" numberOfLines={1} style={{ fontSize: 17 }}>{biz?.name || 'Your Business'}</T>
-          </View>
-        </Pressable>
-        <IconBtn name="settings-outline" onPress={() => router.push('/settings')} bg={colors.paperRaised} />
-      </Row>
-
-      {/* hero */}
-      <View style={styles.hero}>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <T v="eyebrow" style={{ color: colors.tint }}>{`Sales in ${monthName()}`}</T>
-          {growth !== null ? (
-            <View style={[styles.growthPill, { backgroundColor: growth >= 0 ? 'rgba(127,209,174,0.16)' : 'rgba(240,163,155,0.16)' }]}>
-              <Ionicons name={growth >= 0 ? 'arrow-up' : 'arrow-down'} size={12} color={growth >= 0 ? '#7FD1AE' : '#F0A39B'} />
-              <T v="label" style={{ color: growth >= 0 ? '#7FD1AE' : '#F0A39B', fontSize: 12.5, fontFamily: fonts.bold }}>
-                {`${Math.abs(growth).toFixed(0)}%`}
-              </T>
-            </View>
-          ) : null}
-        </Row>
-
-        <Row style={{ alignItems: 'flex-start', marginTop: 14 }}>
-          <T style={styles.heroCur}>{cur}</T>
-          <T style={styles.heroAmt} numberOfLines={1} adjustsFontSizeToFit>
-            {money(s?.salesMonth ?? 0, '', 0)}
-          </T>
-        </Row>
-        <T v="small" style={{ color: colors.onInkMuted, fontSize: 13, marginTop: 2 }}>
-          {growth !== null
-            ? `${growth >= 0 ? 'Up' : 'Down'} from ${moneyShort(s?.salesPrev ?? 0, cur)} last month`
-            : 'Your first month on Ascel Bill'}
-        </T>
-
-        <View style={{ marginTop: 18 }}>
-          <MiniBars series={s?.series ?? []} width={width - 72} currency={cur} />
-        </View>
-
-        <View style={styles.heroDivider} />
-
-        <Row gap={8}>
-          <HeroStat icon="arrow-down" tone="#7FD1AE" label="You’ll get" value={moneyShort(s?.receivable ?? 0, cur)} onPress={() => router.push('/parties')} />
-          <HeroStat icon="arrow-up" tone="#F0A39B" label="You’ll give" value={moneyShort(s?.payable ?? 0, cur)} onPress={() => router.push('/parties')} />
-          <HeroStat icon="wallet" tone={colors.tint} label="Expenses" value={moneyShort(s?.expenseMonth ?? 0, cur)} onPress={() => router.push('/expenses')} />
-        </Row>
-      </View>
-
-      {/* quick actions */}
-      <Row style={{ marginTop: 16, justifyContent: 'space-between' }}>
-        {QUICK.map((qa) => (
-          <Pressable
-            key={qa.label}
-            onPress={() => {
-              tap();
-              qa.go();
-            }}
-            style={({ pressed }) => [styles.quick, pressed && { transform: [{ scale: 0.95 }] }]}
-          >
-            <View style={styles.quickIcon}>
-              <Ionicons name={qa.icon} size={22} color={colors.ink} />
-            </View>
-            <T v="label" style={{ fontSize: 12, color: colors.text }}>{qa.label}</T>
-          </Pressable>
-        ))}
-      </Row>
-
-      {/* low stock nudge */}
-      {s && s.lowStock.length > 0 ? (
-        <Pressable onPress={() => router.push('/items')} style={styles.nudge}>
-          <Ionicons name="alert-circle" size={18} color={colors.warn} />
-          <T v="small" style={{ flex: 1, color: colors.text }}>
-            {s.lowStock.length} item{s.lowStock.length > 1 ? 's are' : ' is'} running low — {s.lowStock.slice(0, 2).map((i) => i.name).join(', ')}
-          </T>
-          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-        </Pressable>
-      ) : null}
-
-      <Row style={{ justifyContent: 'space-between', marginTop: 24, marginBottom: 10 }}>
-        <T v="title" style={{ fontSize: 24 }}>Transactions</T>
-      </Row>
-      <SearchBar value={q} onChangeText={setQ} placeholder="Search party or invoice no." />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 12 }}>
-        {FILTERS.map((f) => (
-          <Chip key={f.v} label={f.l} active={type === f.v} onPress={() => setType(f.v)} />
+      {balance}
+      <QuickLinks
+        style={{ marginTop: 6 }}
+        links={[
+          { icon: 'plusDoc', label: 'Add Txn', onPress: () => setAddOpen(true) },
+          { icon: 'report', label: 'Sale Report', onPress: () => router.push('/report?tab=sale'), tone: colors.success },
+          { icon: 'palette', label: 'Bill Themes', onPress: () => router.push(data?.invoices[0] ? `/invoice/preview?id=${data.invoices[0].id}` : '/settings'), tone: '#8D7FE0' },
+          { icon: 'sliders', label: 'Txn Settings', onPress: () => router.push('/prefs?group=txn'), tone: colors.warn },
+          { icon: 'apps', label: 'Show All', onPress: () => setAddOpen(true) },
+        ]}
+      />
+      <SearchRow value={q} onChange={setQ} placeholder="Search bills, parties or numbers" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <FilterChip label="All" on={type === 'all'} onPress={() => setType('all')} />
+        {DOC_TYPES.map((t) => (
+          <FilterChip key={t} label={SHORT[t] ?? DOCS[t].label} on={type === t} onPress={() => setType(t)} />
         ))}
       </ScrollView>
+      <SectionTitle title={type === 'all' ? 'Recent transactions' : SHORT[type] ?? DOCS[type].label} action={data ? `${data.invoices.length} total` : undefined} />
     </View>
   );
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.paper }}>
-      <FlatList
-        data={data?.invoices ?? []}
-        keyExtractor={(i) => String(i.id)}
-        ListHeaderComponent={header}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
-        renderItem={({ item }) => <InvoiceCard inv={item} currency={cur} onShare={share} />}
-        ListEmptyComponent={
-          data ? (
-            <Empty
-              icon="receipt-outline"
-              title={q || type !== 'all' ? 'Nothing matches' : 'No invoices yet'}
-              body={q || type !== 'all' ? 'Try a different search or filter.' : 'Create your first invoice and send it on WhatsApp in under a minute.'}
-              action={!q && type === 'all' ? <Button title="Create invoice" icon="add" onPress={() => router.push('/invoice/new?type=sale')} /> : undefined}
-            />
-          ) : undefined
-        }
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+  const partyHeader = (
+    <View>
+      {balance}
+      <QuickLinks
+        style={{ marginTop: 6 }}
+        links={[
+          { icon: 'userAdd', label: 'Add Party', onPress: () => router.push('/party/new') },
+          { icon: 'statement', label: 'Party Statement', onPress: () => router.push('/report?tab=party'), tone: colors.success },
+          { icon: 'sliders', label: 'Party Settings', onPress: () => router.push('/prefs?group=party'), tone: colors.warn },
+          { icon: 'apps', label: 'All Reports', onPress: () => router.push('/reports') },
+        ]}
       />
+      <SearchRow value={pq} onChange={setPq} placeholder="Search by name or phone" />
+      <View style={[styles.chips, { flexDirection: 'row' }]}>
+        <FilterChip label="Recent" on={sort === 'recent'} onPress={() => setSort('recent')} />
+        <FilterChip label="Name A–Z" on={sort === 'name'} onPress={() => setSort('name')} />
+        <FilterChip label="Highest balance" on={sort === 'amount'} onPress={() => setSort('amount')} />
+      </View>
+      <SectionTitle title="Parties" action={`${parties.length}`} />
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <AppHeader biz={biz} />
+      <PillTabs
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'txn', label: 'Transactions' },
+          { value: 'party', label: 'Parties' },
+        ]}
+      />
+      {tab === 'txn' ? (
+        <FlatList
+          key="txn"
+          data={data?.invoices ?? []}
+          keyExtractor={(i) => String(i.id)}
+          ListHeaderComponent={txnHeader}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          renderItem={({ item }) => (
+            <TxnCard
+              inv={item}
+              currency={cur}
+              onPrint={() => withFull(item, (f) => printInvoice(biz!, f))}
+              onShare={() => withFull(item, async (f) => { await sharePdf(biz!, f); })}
+              onMore={() => moreFor(item)}
+            />
+          )}
+          ListEmptyComponent={data ? (
+            <Empty icon="receipt-outline" title={q || type !== 'all' ? 'Nothing matches' : 'No transactions yet'} body={q || type !== 'all' ? 'Try a different search or filter.' : 'Tap “New Sale” to create your first bill.'} />
+          ) : undefined}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={8}
+          windowSize={7}
+          removeClippedSubviews
+        />
+      ) : (
+        <FlatList
+          key="party"
+          data={parties}
+          keyExtractor={(p) => String(p.id)}
+          ListHeaderComponent={partyHeader}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          renderItem={({ item, index }) => <PartyRow p={item} currency={cur} first={index === 0} last={index === parties.length - 1} />}
+          ListEmptyComponent={data ? <Empty icon="people-outline" title={pq ? 'No party found' : 'No parties yet'} body="Add customers and suppliers to track what they owe." /> : undefined}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={12}
+          windowSize={7}
+        />
+      )}
+
+      {tab === 'txn' ? (
+        <FabPill label="New Sale" onPress={() => router.push('/invoice/new?type=sale')} />
+      ) : (
+        <FabPill label="New Party" onPress={() => router.push('/party/new')} />
+      )}
+
+      <AddTxnSheet visible={addOpen} onClose={() => setAddOpen(false)} />
     </View>
   );
 }
 
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+function sortParties(list: PartyWithBalance[], sort: PartySort) {
+  if (sort === 'name') return [...list].sort((a, b) => a.name.localeCompare(b.name));
+  if (sort === 'amount') return [...list].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+  return list;
 }
 
-function monthName() {
-  return new Date().toLocaleString('en-IN', { month: 'long' });
-}
-
-function HeroStat({ icon, tone, label, value, onPress }: { icon: IconName; tone: string; label: string; value: string; onPress: () => void }) {
+function FilterChip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   return (
-    <Pressable style={({ pressed }) => [styles.heroStat, pressed && { opacity: 0.75 }]} onPress={onPress}>
-      <View style={[styles.heroStatIcon, { backgroundColor: tone + '26' }]}>
-        <Ionicons name={icon} size={13} color={tone} />
+    <Pressable
+      onPress={() => { if (!on) { tap(); onPress(); } }}
+      style={[styles.chip, on && styles.chipOn]}
+    >
+      <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function SearchRow({ value, onChange, placeholder }: { value: string; onChange: (s: string) => void; placeholder: string }) {
+  return (
+    <View style={styles.search}>
+      <Glyph name="search" size={19} />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textFaint}
+        style={styles.searchInput}
+        returnKeyType="search"
+        autoCorrect={false}
+      />
+      {value ? (
+        <Pressable hitSlop={10} onPress={() => onChange('')}>
+          <Ionicons name="close-circle" size={18} color={colors.textFaint} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+const AVATAR_TONES = ['#5980A6', '#2F8F6B', '#B7832F', '#8D7FE0', '#C2483D', '#3E8FB0'];
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
+}
+
+function PartyRow({ p, currency, first, last }: { p: PartyWithBalance; currency: string; first: boolean; last: boolean }) {
+  const get = p.balance > 0.004;
+  const give = p.balance < -0.004;
+  const tone = AVATAR_TONES[p.id % AVATAR_TONES.length];
+  return (
+    <Pressable
+      onPress={() => { tap(); router.push(`/party/${p.id}`); }}
+      style={({ pressed }) => [
+        styles.partyRow,
+        first && { borderTopLeftRadius: 18, borderTopRightRadius: 18, marginTop: 10, borderTopWidth: 1 },
+        last && { borderBottomLeftRadius: 18, borderBottomRightRadius: 18, borderBottomWidth: 1 },
+        pressed && { backgroundColor: colors.canvas },
+      ]}
+    >
+      <View style={[styles.avatar, { backgroundColor: tone + '1F' }]}>
+        <Text style={[styles.avatarText, { color: tone }]}>{initials(p.name)}</Text>
       </View>
-      <T style={styles.heroStatValue} numberOfLines={1} adjustsFontSizeToFit>{value}</T>
-      <T v="small" style={{ color: colors.onInkMuted, fontSize: 11.5, marginTop: 1 }} numberOfLines={1}>{label}</T>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.partyName} numberOfLines={1}>{p.name}</Text>
+        <Text style={styles.partyDate}>
+          {p.kind === 'supplier' ? 'Supplier' : 'Customer'} · {dateLabel(p.last_date ?? p.created_at.slice(0, 10))}
+        </Text>
+      </View>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={[styles.partyAmt, get && { color: colors.success }, give && { color: colors.danger }]}>
+          {money(Math.abs(p.balance), currency, 0)}
+        </Text>
+        <Text style={[styles.partyTag, get && { color: colors.success }, give && { color: colors.danger }]}>
+          {get ? "You'll get" : give ? "You'll give" : 'Settled'}
+        </Text>
+      </View>
+      {!last ? <View style={styles.partyHr} /> : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    backgroundColor: colors.inkDeep,
-    borderRadius: radius.xl,
-    padding: 20,
-    overflow: 'hidden',
-    ...shadow.lift,
-  },
-  growthPill: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 10, height: 26, borderRadius: radius.pill },
-  heroCur: { color: colors.onInkMuted, fontFamily: fonts.semibold, fontSize: 26, lineHeight: 34, marginTop: 6, marginRight: 4 },
-  heroAmt: { color: colors.white, fontFamily: fonts.bold, fontSize: 52, lineHeight: 58, letterSpacing: -2, fontVariant: ['tabular-nums'], flexShrink: 1 },
-  heroDivider: { height: 1, backgroundColor: 'rgba(148,188,227,0.12)', marginTop: 16, marginBottom: 14 },
-  heroStat: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 18,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-  },
-  heroStatIcon: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  heroStatValue: { color: colors.onInk, fontFamily: fonts.bold, fontSize: 19, letterSpacing: -0.4 },
-  quick: { alignItems: 'center', gap: 7, width: '23%' },
-  quickIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
-    backgroundColor: colors.paperRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-    ...shadow.card,
-  },
-  nudge: {
+  search: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 16,
-    backgroundColor: colors.warnSoft,
-    borderRadius: radius.m,
-    padding: 12,
+    height: 48,
+    marginHorizontal: 16,
+    marginTop: 4,
+    paddingHorizontal: 14,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.line,
   },
+  searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 14.5, color: colors.text, paddingVertical: 0 },
+  chips: { paddingHorizontal: 16, paddingTop: 10, gap: 8 },
+  chip: { height: 34, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
+  chipOn: { backgroundColor: colors.ink, borderColor: colors.ink },
+  chipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textMuted },
+  chipTextOn: { color: '#fff', fontFamily: fonts.semibold },
+  partyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: colors.line,
+  },
+  avatar: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontFamily: fonts.bold, fontSize: 14 },
+  partyName: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+  partyDate: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 2 },
+  partyAmt: { fontFamily: fonts.bold, fontSize: 15, color: colors.textMuted, fontVariant: ['tabular-nums'] },
+  partyTag: { fontFamily: fonts.medium, fontSize: 11, color: colors.textFaint, marginTop: 2 },
+  partyHr: { position: 'absolute', left: 68, right: 14, bottom: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.lineStrong },
 });

@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { computeLine, round2 } from '@/lib/calc';
 import { todayISO } from '@/lib/format';
+import { BALANCE_SIGN_SQL, CASH_SIGN_SQL, DOCS } from '@/lib/docs';
 
 /* ---------------- business ---------------- */
 
@@ -31,8 +32,7 @@ export async function updateBusiness(db: SQLiteDatabase, patch: Partial<Business
 
 const BALANCE_SQL = `
   p.opening_balance
-  + COALESCE((SELECT SUM(total - received) FROM invoices WHERE party_id = p.id AND type = 'sale'), 0)
-  - COALESCE((SELECT SUM(total - received) FROM invoices WHERE party_id = p.id AND type = 'purchase'), 0)
+  + COALESCE((SELECT SUM((${BALANCE_SIGN_SQL}) * (total - received)) FROM invoices WHERE party_id = p.id), 0)
   - COALESCE((SELECT SUM(amount) FROM payments WHERE party_id = p.id AND direction = 'in'), 0)
   + COALESCE((SELECT SUM(amount) FROM payments WHERE party_id = p.id AND direction = 'out'), 0)`;
 
@@ -187,11 +187,9 @@ export async function getInvoice(db: SQLiteDatabase, id: number): Promise<FullIn
   return { ...inv, lines };
 }
 
-const PREFIX: Record<DocType, string> = { sale: '', estimate: 'EST-', purchase: 'PUR-' };
-
 export async function nextInvoiceNumber(db: SQLiteDatabase, type: DocType) {
   const biz = await getBusiness(db);
-  const prefix = type === 'sale' ? biz.invoice_prefix : PREFIX[type];
+  const prefix = type === 'sale' ? biz.invoice_prefix : DOCS[type].prefix;
   const row = await db.getFirstAsync<{ n: number }>(
     'SELECT COUNT(*) AS n FROM invoices WHERE type = ?',
     type,
@@ -207,7 +205,7 @@ export async function nextInvoiceNumber(db: SQLiteDatabase, type: DocType) {
 }
 
 function stockSign(type: DocType) {
-  return type === 'sale' ? -1 : type === 'purchase' ? 1 : 0;
+  return DOCS[type]?.stock ?? 0;
 }
 
 async function applyStock(db: SQLiteDatabase, type: DocType, lines: InvoiceLine[], factor: 1 | -1) {
@@ -339,9 +337,8 @@ export async function dashboardStats(db: SQLiteDatabase) {
     'SELECT * FROM items WHERE is_service = 0 AND stock <= min_stock ORDER BY stock ASC LIMIT 6',
   );
   const cashIn = await one(
-    `SELECT COALESCE((SELECT SUM(received) FROM invoices WHERE type='sale'),0)
+    `SELECT COALESCE((SELECT SUM((${CASH_SIGN_SQL}) * received) FROM invoices),0)
           + COALESCE((SELECT SUM(amount) FROM payments WHERE direction='in'),0)
-          - COALESCE((SELECT SUM(received) FROM invoices WHERE type='purchase'),0)
           - COALESCE((SELECT SUM(amount) FROM payments WHERE direction='out'),0)
           - COALESCE((SELECT SUM(amount) FROM expenses),0) AS v`,
   );
@@ -399,4 +396,116 @@ export async function resetAll(db: SQLiteDatabase) {
 
 export async function updateInvoiceDesign(db: SQLiteDatabase, id: number, template: string, color: string) {
   await db.runAsync('UPDATE invoices SET template = ?, color = ? WHERE id = ?', template, color, id);
+}
+
+/* ---------------- preferences (toggles in settings screens) ---------------- */
+
+export async function getPrefs(db: SQLiteDatabase): Promise<Record<string, string>> {
+  const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM prefs');
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+
+export async function setPref(db: SQLiteDatabase, key: string, value: string) {
+  await db.runAsync('INSERT INTO prefs (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value);
+}
+
+/* ---------------- cash in-hand ledger ---------------- */
+
+export interface CashRow {
+  key: string;
+  label: string;
+  date: string;
+  amount: number; // + in, - out
+}
+
+export async function cashLedger(db: SQLiteDatabase): Promise<CashRow[]> {
+  const inv = await db.getAllAsync<{ id: number; type: string; party_name: string; date: string; v: number }>(
+    `SELECT id, type, party_name, date, (${CASH_SIGN_SQL}) * received AS v FROM invoices WHERE received > 0 AND (${CASH_SIGN_SQL}) <> 0`,
+  );
+  const pay = await db.getAllAsync<{ id: number; direction: string; name: string; date: string; amount: number }>(
+    `SELECT pm.id, pm.direction, COALESCE(p.name, '') AS name, pm.date, pm.amount FROM payments pm LEFT JOIN parties p ON p.id = pm.party_id`,
+  );
+  const exp = await db.getAllAsync<Expense>('SELECT * FROM expenses');
+  const rows: CashRow[] = [
+    ...inv.map((r) => ({
+      key: `i${r.id}`,
+      label: `${DOCS[r.type as DocType]?.label.replace(' Invoice', '') ?? 'Sale'}${r.party_name ? ` - ${r.party_name}` : ''}`,
+      date: r.date,
+      amount: r.v,
+    })),
+    ...pay.map((r) => ({
+      key: `p${r.id}`,
+      label: `${r.direction === 'in' ? 'Payment-In' : 'Payment-Out'}${r.name ? ` - ${r.name}` : ''}`,
+      date: r.date,
+      amount: r.direction === 'in' ? r.amount : -r.amount,
+    })),
+    ...exp.map((e) => ({ key: `e${e.id}`, label: `Expense - ${e.category}`, date: e.date, amount: -e.amount })),
+  ];
+  return rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
+/* ---------------- dashboard extras ---------------- */
+
+export async function expensesByCategory(db: SQLiteDatabase, month?: string) {
+  return db.getAllAsync<{ category: string; total: number; n: number }>(
+    `SELECT category, SUM(amount) AS total, COUNT(*) AS n FROM expenses
+     ${month ? 'WHERE substr(date,1,7) = ?' : ''} GROUP BY category ORDER BY total DESC`,
+    ...(month ? [month] : []),
+  );
+}
+
+/** Monthly sale totals for the last 3 months this year and the same months last year. */
+export async function salesTrend(db: SQLiteDatabase) {
+  const months: string[] = [];
+  const d = new Date();
+  for (let i = 2; i >= 0; i--) {
+    const m = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    months.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
+  }
+  const lastYear = months.map((m) => `${Number(m.slice(0, 4)) - 1}${m.slice(4)}`);
+  const rows = await db.getAllAsync<{ m: string; v: number }>(
+    `SELECT substr(date,1,7) AS m, SUM(total) AS v FROM invoices WHERE type='sale' AND substr(date,1,7) IN (${[...months, ...lastYear]
+      .map(() => '?')
+      .join(',')}) GROUP BY m`,
+    ...months,
+    ...lastYear,
+  );
+  const map = Object.fromEntries(rows.map((r) => [r.m, r.v]));
+  return {
+    months,
+    current: months.map((m) => map[m] ?? 0),
+    previous: lastYear.map((m) => map[m] ?? 0),
+  };
+}
+
+/** Month-by-month totals for the last `n` months (oldest first), plus the same months a year earlier. */
+export async function monthlySeries(db: SQLiteDatabase, n: number) {
+  const months: string[] = [];
+  const d = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const m = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    months.push(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`);
+  }
+  const lastYear = months.map((m) => `${Number(m.slice(0, 4)) - 1}${m.slice(4)}`);
+  const from = lastYear[0];
+  const inv = await db.getAllAsync<{ m: string; type: string; v: number }>(
+    `SELECT substr(date,1,7) AS m, type, SUM(total) AS v FROM invoices
+     WHERE type IN ('sale','purchase') AND substr(date,1,7) >= ? GROUP BY m, type`,
+    from,
+  );
+  const exp = await db.getAllAsync<{ m: string; v: number }>(
+    `SELECT substr(date,1,7) AS m, SUM(amount) AS v FROM expenses WHERE substr(date,1,7) >= ? GROUP BY m`,
+    from,
+  );
+  const sale: Record<string, number> = {};
+  const purchase: Record<string, number> = {};
+  for (const r of inv) (r.type === 'sale' ? sale : purchase)[r.m] = r.v;
+  const expense = Object.fromEntries(exp.map((r) => [r.m, r.v]));
+  return {
+    months,
+    sales: months.map((m) => sale[m] ?? 0),
+    salesLastYear: lastYear.map((m) => sale[m] ?? 0),
+    purchases: months.map((m) => purchase[m] ?? 0),
+    expenses: months.map((m) => expense[m] ?? 0),
+  };
 }

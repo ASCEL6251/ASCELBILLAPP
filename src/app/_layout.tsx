@@ -36,12 +36,13 @@ export default function RootLayout() {
           <StatusBar style="dark" />
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: colors.paper },
-              headerShadowVisible: false,
+              headerStyle: { backgroundColor: colors.card },
+              headerShadowVisible: true,
               headerTintColor: colors.ink,
-              headerTitleStyle: { fontFamily: fonts.semibold, fontSize: 17, color: colors.ink },
+              headerTitleAlign: 'left',
+              headerTitleStyle: { fontFamily: fonts.semibold, fontSize: 18, color: colors.ink },
               headerBackButtonDisplayMode: 'minimal',
-              contentStyle: { backgroundColor: colors.paper },
+              contentStyle: { backgroundColor: colors.canvas },
             }}
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -50,13 +51,22 @@ export default function RootLayout() {
             <Stack.Screen name="invoice/[id]" options={{ title: '' }} />
             <Stack.Screen name="invoice/preview" options={{ title: 'Choose a design', presentation: 'fullScreenModal', headerShown: false }} />
             <Stack.Screen name="party/new" options={{ title: 'Party', presentation: 'modal' }} />
-            <Stack.Screen name="party/[id]" options={{ title: '' }} />
+            <Stack.Screen name="party/[id]" options={{ title: 'Party Details' }} />
             <Stack.Screen name="item/new" options={{ title: 'Item', presentation: 'modal' }} />
             <Stack.Screen name="item/[id]" options={{ title: '' }} />
             <Stack.Screen name="payment" options={{ title: 'Record Payment', presentation: 'modal' }} />
             <Stack.Screen name="business" options={{ title: 'Business Profile' }} />
             <Stack.Screen name="reports" options={{ title: 'Reports' }} />
-            <Stack.Screen name="expenses" options={{ title: 'Expenses' }} />
+            <Stack.Screen name="report" options={{ title: 'Report' }} />
+            <Stack.Screen name="expenses" options={{ title: 'Expense' }} />
+            <Stack.Screen name="cash" options={{ title: 'Cash In-Hand' }} />
+            <Stack.Screen name="feature" options={{ title: '' }} />
+            <Stack.Screen name="stock-summary" options={{ title: 'Stock Summary' }} />
+            <Stack.Screen name="prefs" options={{ title: 'Settings' }} />
+            <Stack.Screen name="export-items" options={{ title: 'Export Items' }} />
+            <Stack.Screen name="import-items" options={{ title: 'Import Items' }} />
+            <Stack.Screen name="notifications" options={{ title: 'Notifications' }} />
+            <Stack.Screen name="app-settings" options={{ title: 'Settings' }} />
             <Stack.Screen name="settings" options={{ title: 'Invoice Settings' }} />
           </Stack>
         </SQLiteProvider>

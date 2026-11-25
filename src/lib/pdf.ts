@@ -5,6 +5,7 @@ import { Linking } from 'react-native';
 import type { Business, FullInvoice } from '@/db/types';
 import { pageSize, renderInvoiceHtml } from '@/templates';
 import { money } from './format';
+import { docMeta } from '@/lib/docs';
 
 function opts(biz: Business, inv: FullInvoice, template?: string, color?: string) {
   const tpl = template || inv.template || biz.template;
@@ -38,7 +39,7 @@ export async function savePdf(html: string, fileName: string, size: { width: num
 export async function makePdf(biz: Business, inv: FullInvoice, template?: string, color?: string) {
   const { html, ...size } = opts(biz, inv, template, color);
   // A human name: "Invoice_INV-12_Party.pdf"
-  const kind = inv.type === 'estimate' ? 'Estimate' : inv.type === 'purchase' ? 'Bill' : 'Invoice';
+  const kind = inv.type === 'sale' ? 'Invoice' : docMeta(inv.type).printTitle.replace(/ /g, '_');
   return savePdf(html, `${kind}_${inv.number}_${inv.party_name || 'Cash'}`, size);
 }
 
@@ -62,8 +63,8 @@ export async function printInvoice(biz: Business, inv: FullInvoice, template?: s
 export async function whatsappReminder(biz: Business, inv: FullInvoice) {
   const due = Math.max(0, inv.total - inv.received);
   const text =
-    inv.type === 'estimate'
-      ? `Hello ${inv.party_name}, please find estimate ${inv.number} for ${money(inv.total, biz.currency)} from ${biz.name}.`
+    !docMeta(inv.type).pay
+      ? `Hello ${inv.party_name}, please find ${docMeta(inv.type).printTitle.toLowerCase()} ${inv.number} for ${money(inv.total, biz.currency)} from ${biz.name}.`
       : due > 0
         ? `Hello ${inv.party_name}, this is a gentle reminder from ${biz.name}: ${money(due, biz.currency)} is due on invoice ${inv.number}.${biz.upi ? ` Pay via UPI: ${biz.upi}` : ''} Thank you!`
         : `Hello ${inv.party_name}, thank you for your payment of ${money(inv.total, biz.currency)} against invoice ${inv.number}. — ${biz.name}`;

@@ -2,6 +2,7 @@ import qrGenerator from 'qrcode-generator';
 import type { Business, FullInvoice } from '@/db/types';
 import { isInterState, lineTaxable, taxBreakup } from '@/lib/calc';
 import { amountInWords, dateLong, escapeHtml as e, groupIN } from '@/lib/format';
+import { docMeta } from '@/lib/docs';
 
 export interface RenderCtx {
   biz: Business;
@@ -18,8 +19,7 @@ export interface RenderCtx {
 }
 
 export function docTitle(inv: FullInvoice, biz: Business) {
-  if (inv.type === 'estimate') return 'Estimate';
-  if (inv.type === 'purchase') return 'Purchase Bill';
+  if (inv.type !== 'sale') return docMeta(inv.type).printTitle;
   return biz.gstin ? 'Tax Invoice' : 'Invoice';
 }
 
@@ -136,16 +136,16 @@ export function partyLines(ctx: RenderCtx, sep = '<br/>') {
 }
 
 export function partyLabel(ctx: RenderCtx) {
-  return ctx.inv.type === 'purchase' ? 'Bill From' : 'Bill To';
+  return docMeta(ctx.inv.type).side === 'purchase' ? 'Bill From' : 'Bill To';
 }
 
 export function metaRows(ctx: RenderCtx) {
   const i = ctx.inv;
   const rows: [string, string][] = [
-    [ctx.inv.type === 'estimate' ? 'Estimate No.' : 'Invoice No.', i.number],
+    [ctx.inv.type === 'sale' ? 'Invoice No.' : `${docMeta(ctx.inv.type).printTitle} No.`, i.number],
     ['Date', dateLong(i.date)],
   ];
-  if (i.due_date) rows.push([i.type === 'estimate' ? 'Valid Till' : 'Due Date', dateLong(i.due_date)]);
+  if (i.due_date) rows.push([docMeta(i.type).pay ? 'Due Date' : 'Valid Till', dateLong(i.due_date)]);
   if (i.party_state || ctx.biz.state) rows.push(['Place of Supply', i.party_state || ctx.biz.state]);
   return rows;
 }
@@ -171,8 +171,8 @@ export function totalRows(ctx: RenderCtx): TotalRow[] {
   if (i.shipping > 0) rows.push({ label: 'Shipping', value: m(ctx, i.shipping) });
   if (Math.abs(i.round_off) > 0.004) rows.push({ label: 'Round Off', value: `${i.round_off > 0 ? '+' : '-'} ${m(ctx, Math.abs(i.round_off))}` });
   rows.push({ label: 'Total', value: m(ctx, i.total), strong: true });
-  if (i.type !== 'estimate') {
-    rows.push({ label: i.type === 'purchase' ? 'Paid' : 'Received', value: m(ctx, i.received), muted: true });
+  if (docMeta(i.type).pay) {
+    rows.push({ label: docMeta(i.type).balance < 0 ? 'Paid' : 'Received', value: m(ctx, i.received), muted: true });
     rows.push({ label: 'Balance Due', value: m(ctx, ctx.balance), muted: true });
   }
   return rows;

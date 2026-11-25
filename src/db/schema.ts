@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 export async function migrate(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -127,6 +127,15 @@ CREATE INDEX IF NOT EXISTS idx_inv_items ON invoice_items(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_pay_party ON payments(party_id);
 `);
     version = 1;
+  }
+  if (version === 1) {
+    await db.execAsync(`
+CREATE TABLE IF NOT EXISTS prefs (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT NOT NULL DEFAULT ''
+);
+`);
+    version = 2;
   }
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

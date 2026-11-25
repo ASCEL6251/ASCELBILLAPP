@@ -24,6 +24,11 @@ export const colors = {
   dangerSoft: '#F8E6E4',
   warn: '#B7832F',
   warnSoft: '#F7EEDC',
+  // App surfaces (light blue-grey canvas with white cards, derived from the brand tint).
+  canvas: '#EDF2F8',
+  card: '#FFFFFF',
+  gold: '#D7A93F',
+  goldSoft: '#FBF1DA',
 };
 
 export const fonts = {

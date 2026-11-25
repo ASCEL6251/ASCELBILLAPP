@@ -11,6 +11,7 @@ import { useData } from '@/lib/hooks';
 import { printInvoice, sharePdf, whatsappReminder } from '@/lib/pdf';
 import { colors, fonts } from '@/lib/theme';
 import { getTemplate } from '@/templates';
+import { docMeta } from '@/lib/docs';
 
 const MODES = ['Cash', 'UPI', 'Card', 'Bank', 'Cheque'];
 
@@ -28,7 +29,8 @@ export default function InvoiceDetail() {
   const bal = Math.max(0, inv.total - inv.received);
   const st = statusOf(inv);
   const inter = isInterState(biz.state, inv.party_state);
-  const kind = inv.type === 'estimate' ? 'Estimate' : inv.type === 'purchase' ? 'Purchase Bill' : 'Sale Invoice';
+  const meta = docMeta(inv.type);
+  const kind = meta.label;
 
   const share = async () => {
     setSharing(true);
@@ -85,10 +87,10 @@ export default function InvoiceDetail() {
       <Screen
         footer={
           <>
-            {inv.type === 'estimate' ? (
+            {inv.type === 'estimate' || inv.type === 'sale_order' || inv.type === 'delivery_challan' ? (
               <Button kind="soft" title="Convert to sale" icon="swap-horizontal" onPress={convert} style={{ flex: 1 }} />
-            ) : bal > 0 ? (
-              <Button kind="soft" title={inv.type === 'purchase' ? 'Pay' : 'Take payment'} icon="cash-outline" onPress={() => { setAmt(String(bal)); setPaySheet(true); }} style={{ flex: 1 }} />
+            ) : meta.pay && bal > 0 ? (
+              <Button kind="soft" title={meta.balance < 0 ? 'Pay' : 'Take payment'} icon="cash-outline" onPress={() => { setAmt(String(bal)); setPaySheet(true); }} style={{ flex: 1 }} />
             ) : null}
             <Button title="Share PDF" icon="share-outline" onPress={share} loading={sharing} style={{ flex: 1.2 }} />
           </>
@@ -104,14 +106,14 @@ export default function InvoiceDetail() {
           <T v="small" style={{ color: colors.onInkMuted }}>
             {inv.party_name || 'Cash sale'} · {dateLong(inv.date)}
           </T>
-          {inv.type !== 'estimate' ? (
+          {meta.pay ? (
             <View style={{ marginTop: 16 }}>
               <View style={styles.track}>
                 <View style={[styles.fill, { width: `${inv.total ? Math.min(100, (inv.received / inv.total) * 100) : 0}%` }]} />
               </View>
               <Row style={{ justifyContent: 'space-between', marginTop: 8 }}>
                 <T v="small" style={{ color: colors.onInkMuted, fontSize: 12 }}>
-                  {inv.type === 'purchase' ? 'Paid' : 'Received'} {money(inv.received, cur)}
+                  {meta.balance < 0 ? 'Paid' : 'Received'} {money(inv.received, cur)}
                 </T>
                 <T v="small" style={{ color: bal > 0 ? '#F0A39B' : '#7FD1AE', fontSize: 12, fontFamily: fonts.semibold }}>
                   {bal > 0 ? `Due ${money(bal, cur)}` : 'Settled'}
@@ -136,7 +138,7 @@ export default function InvoiceDetail() {
           <Card onPress={() => router.push(`/party/${inv.party_id}`)} style={{ marginTop: 16 }}>
             <Row style={{ justifyContent: 'space-between' }}>
               <View style={{ flex: 1 }}>
-                <T v="eyebrow">{inv.type === 'purchase' ? 'Supplier' : 'Billed to'}</T>
+                <T v="eyebrow">{meta.side === 'purchase' ? 'Supplier' : 'Billed to'}</T>
                 <T v="h3" style={{ marginTop: 4 }}>{inv.party_name}</T>
                 <T v="small" style={{ fontSize: 12.5 }}>{[inv.party_phone, inv.party_state, inv.party_gstin && `GSTIN ${inv.party_gstin}`].filter(Boolean).join(' · ')}</T>
               </View>
@@ -171,13 +173,13 @@ export default function InvoiceDetail() {
 
         <Card style={{ marginTop: 12 }}>
           <KV k="Design" v={getTemplate(inv.template || biz.template).name} />
-          {inv.due_date ? <KV k={inv.type === 'estimate' ? 'Valid till' : 'Due date'} v={dateLong(inv.due_date)} /> : null}
-          {inv.type !== 'estimate' ? <KV k="Payment mode" v={inv.payment_mode} /> : null}
+          {inv.due_date ? <KV k={meta.pay ? 'Due date' : 'Valid till'} v={dateLong(inv.due_date)} /> : null}
+          {meta.pay ? <KV k="Payment mode" v={inv.payment_mode} /> : null}
           {inv.notes ? <T v="small" style={{ marginTop: 8 }}>{inv.notes}</T> : null}
         </Card>
       </Screen>
 
-      <Sheet visible={paySheet} onClose={() => setPaySheet(false)} title={inv.type === 'purchase' ? 'Record payment' : 'Take payment'}>
+      <Sheet visible={paySheet} onClose={() => setPaySheet(false)} title={meta.balance < 0 ? 'Record payment' : 'Take payment'}>
         <Field label="Amount" prefix={cur} value={amt} onChangeText={setAmt} keyboardType="decimal-pad" autoFocus hint={`Balance due ${money(bal, cur)}`} />
         <Row style={{ flexWrap: 'wrap', marginBottom: 16 }}>
           {MODES.map((m) => <Chip key={m} label={m} active={mode === m} onPress={() => setMode(m)} />)}

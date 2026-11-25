@@ -2,6 +2,7 @@ import type { LedgerRow } from '@/db/repo';
 import type { Business, PartyWithBalance } from '@/db/types';
 import { dateLong, escapeHtml as e, groupIN, todayISO } from '@/lib/format';
 import { page } from './shared';
+import { docMeta } from '@/lib/docs';
 
 /** Party statement in the Meridian visual language. */
 export function statementHtml(biz: Business, party: PartyWithBalance, rows: LedgerRow[]) {
@@ -16,10 +17,12 @@ export function statementHtml(biz: Business, party: PartyWithBalance, rows: Ledg
       let label = '';
       if (r.kind === 'invoice') {
         const inv = r as Extract<LedgerRow, { kind: 'invoice' }>;
-        if (inv.type === 'estimate') return '';
+        const meta = docMeta(inv.type);
+        if (!meta.balance) return '';
         const paid = inv.total - inv.balance;
-        if (inv.type === 'sale') { dr = inv.total; cr = paid; label = `Sale ${e(inv.number)}`; }
-        else { cr = inv.total; dr = paid; label = `Purchase ${e(inv.number)}`; }
+        if (meta.balance > 0) { dr = inv.total; cr = paid; }
+        else { cr = inv.total; dr = paid; }
+        label = `${meta.label.replace(' Invoice', '')} ${e(inv.number)}`;
       } else {
         const p = r as Extract<LedgerRow, { kind: 'payment' }>;
         if (p.direction === 'in') { cr = p.amount; label = `Payment received · ${e(p.mode)}`; }

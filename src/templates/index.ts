@@ -5,6 +5,7 @@ import {
   partyLines, qrBlock, RenderCtx, rgba, shade, signatureHtml, taxTable, termsText, tint, totalRows,
   isLight, n2, qtyFmt,
 } from './shared';
+import { docMeta } from '@/lib/docs';
 
 export interface TemplateDef {
   id: string;
@@ -513,7 +514,7 @@ const swiss: TemplateDef = {
       `<div class="wrap">
         ${ctx.showPaid ? '<div class="paid">PAID</div>' : ''}
         <div class="top"><div style="display:flex;gap:12px;align-items:center">${logoHtml(ctx, 40, { bg: c })}<div><div class="bname">${e(ctx.biz.name)}</div><div class="bsub">${bizLines(ctx, ' / ')}</div></div></div></div>
-        <div class="big"><h1>${ctx.title.replace(' ', '<br/>')}</h1><div class="amt"><span>${ctx.inv.type === 'estimate' ? 'Estimate total' : 'Amount due'}</span><b>${m(ctx, ctx.inv.type === 'estimate' ? ctx.inv.total : ctx.balance)}</b></div></div>
+        <div class="big"><h1>${ctx.title.replace(' ', '<br/>')}</h1><div class="amt"><span>${docMeta(ctx.inv.type).pay ? 'Amount due' : 'Total'}</span><b>${m(ctx, docMeta(ctx.inv.type).pay ? ctx.balance : ctx.inv.total)}</b></div></div>
         <div class="grid">
           <div><div class="lbl">${partyLabel(ctx)}</div><div class="pname">${e(ctx.inv.party_name || 'Cash Sale')}</div><p>${partyLines(ctx)}</p></div>
           <div><div class="lbl">Reference</div><table class="meta">${meta}</table></div>

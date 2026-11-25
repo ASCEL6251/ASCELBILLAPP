@@ -6,6 +6,7 @@ import { deleteItem, getBusiness, getItem, itemMovements } from '@/db/repo';
 import { dateLabel, money } from '@/lib/format';
 import { useData } from '@/lib/hooks';
 import { colors, fonts } from '@/lib/theme';
+import { docMeta } from '@/lib/docs';
 
 export default function ItemDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -69,13 +70,13 @@ export default function ItemDetail() {
         ) : (
           moves.map((m, i) => (
             <Card key={i} onPress={() => router.push(`/invoice/${m.invoice_id}`)} style={{ marginBottom: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Ionicons name={m.type === 'purchase' ? 'arrow-down-circle' : m.type === 'estimate' ? 'ellipse-outline' : 'arrow-up-circle'} size={24}
-                color={m.type === 'purchase' ? colors.success : m.type === 'estimate' ? colors.textFaint : colors.accent} />
+              <Ionicons name={docMeta(m.type).stock > 0 ? 'arrow-down-circle' : docMeta(m.type).stock === 0 ? 'ellipse-outline' : 'arrow-up-circle'} size={24}
+                color={docMeta(m.type).stock > 0 ? colors.success : docMeta(m.type).stock === 0 ? colors.textFaint : colors.accent} />
               <View style={{ flex: 1 }}>
                 <T v="h3">{m.party_name || 'Cash'} · {m.number}</T>
-                <T v="small" style={{ fontSize: 12 }}>{dateLabel(m.date)} · {m.type}</T>
+                <T v="small" style={{ fontSize: 12 }}>{dateLabel(m.date)} · {docMeta(m.type).label}</T>
               </View>
-              <T v="h3" style={{ fontFamily: fonts.bold }}>{m.type === 'purchase' ? '+' : m.type === 'sale' ? '−' : ''}{m.qty}</T>
+              <T v="h3" style={{ fontFamily: fonts.bold }}>{docMeta(m.type).stock > 0 ? '+' : docMeta(m.type).stock < 0 ? '−' : ''}{m.qty}</T>
             </Card>
           ))
         )}

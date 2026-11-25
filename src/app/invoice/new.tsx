@@ -2,9 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import {
-  Avatar, Badge, Button, Card, Chip, Divider, Field, KV, Row, Screen, SearchBar, Segmented, Sheet, T, tap, success,
+  Avatar, Badge, Button, Card, Chip, Divider, Field, KV, Row, Screen, SearchBar, Sheet, T, tap, success,
 } from '@/components/ui';
 import {
   getBusiness, getInvoice, getParty, listItems, listParties, nextInvoiceNumber, saveInvoice, saveParty,
@@ -13,10 +13,10 @@ import type { Business, DocType, InvoiceLine, Item, PartyWithBalance } from '@/d
 import { computeLine, computeTotals, isInterState } from '@/lib/calc';
 import { addDays, dateLong, money, num, todayISO } from '@/lib/format';
 import { colors, fonts, radius } from '@/lib/theme';
+import { DOCS, DOC_TYPES } from '@/lib/docs';
 
 const TAX_RATES = [0, 3, 5, 12, 18, 28];
 const MODES = ['Cash', 'UPI', 'Card', 'Bank', 'Cheque'];
-const TITLES: Record<DocType, string> = { sale: 'Sale Invoice', estimate: 'Estimate', purchase: 'Purchase Bill' };
 
 const blankLine = (): InvoiceLine => ({
   item_id: null, name: '', hsn: '', unit: 'pcs', qty: 1, rate: 0, discount: 0, tax_rate: 0, tax: 0, amount: 0,
@@ -123,7 +123,7 @@ export default function InvoiceEditor() {
     try {
       let partyId = party?.id ?? null;
       if (party && !partyId && party.name.trim()) {
-        partyId = await saveParty(db, { name: party.name.trim(), phone: party.phone, kind: type === 'purchase' ? 'supplier' : 'customer' });
+        partyId = await saveParty(db, { name: party.name.trim(), phone: party.phone, kind: DOCS[type].side === 'purchase' ? 'supplier' : 'customer' });
       }
       const id = await saveInvoice(db, {
         id: editId,
@@ -143,7 +143,7 @@ export default function InvoiceEditor() {
         shipping: totals.shipping,
         round_off: totals.roundOff,
         total: totals.total,
-        received: type === 'estimate' ? 0 : receivedNum,
+        received: DOCS[type].pay ? receivedNum : 0,
         payment_mode: mode,
         notes: notes.trim(),
         terms: terms.trim(),
@@ -162,7 +162,7 @@ export default function InvoiceEditor() {
 
   return (
     <>
-      <Stack.Screen options={{ title: editId ? `Edit ${number}` : TITLES[type] }} />
+      <Stack.Screen options={{ title: editId ? `Edit ${number}` : DOCS[type].label }} />
       <Screen
         footer={
           <>
@@ -175,21 +175,17 @@ export default function InvoiceEditor() {
         }
       >
         {!editId ? (
-          <Segmented
-            value={type}
-            onChange={setType}
-            options={[
-              { value: 'sale', label: 'Sale' },
-              { value: 'estimate', label: 'Estimate' },
-              { value: 'purchase', label: 'Purchase' },
-            ]}
-          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+            {DOC_TYPES.map((t) => (
+              <Chip key={t} label={DOCS[t].label} active={type === t} onPress={() => setType(t)} />
+            ))}
+          </ScrollView>
         ) : null}
 
         {/* number + date */}
         <Row style={{ marginTop: 14 }} gap={10}>
           <Card style={{ flex: 1, padding: 12 }}>
-            <T v="small" style={styles.k}>{type === 'estimate' ? 'Estimate No.' : 'Invoice No.'}</T>
+            <T v="small" style={styles.k}>{type === 'sale' ? 'Invoice No.' : `${DOCS[type].printTitle} No.`}</T>
             <TextInput value={number} onChangeText={setNumber} style={styles.inlineInput} autoCapitalize="characters" />
           </Card>
           <Card style={{ flex: 1.3, padding: 12 }}>
@@ -203,7 +199,7 @@ export default function InvoiceEditor() {
         </Row>
 
         {/* party */}
-        <T v="eyebrow" style={styles.eyebrow}>{type === 'purchase' ? 'Supplier' : 'Bill to'}</T>
+        <T v="eyebrow" style={styles.eyebrow}>{DOCS[type].side === 'purchase' ? 'Supplier' : 'Bill to'}</T>
         <Card onPress={() => setPartySheet(true)} style={{ padding: 14 }}>
           {party ? (
             <Row gap={12}>
@@ -283,12 +279,12 @@ export default function InvoiceEditor() {
         ) : null}
 
         {/* payment */}
-        {type !== 'estimate' && lines.length ? (
+        {DOCS[type].pay && lines.length ? (
           <>
-            <T v="eyebrow" style={styles.eyebrow}>{type === 'purchase' ? 'Paid' : 'Received'}</T>
+            <T v="eyebrow" style={styles.eyebrow}>{DOCS[type].balance < 0 ? 'Paid' : 'Received'}</T>
             <Card>
               <Row style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-                <T v="h3">{type === 'purchase' ? 'Fully paid' : 'Fully received'}</T>
+                <T v="h3">{DOCS[type].balance < 0 ? 'Fully paid' : 'Fully received'}</T>
                 <Switch value={fullyPaid} onValueChange={setFullyPaid} trackColor={{ true: colors.success }} />
               </Row>
               {!fullyPaid ? (
@@ -304,7 +300,7 @@ export default function InvoiceEditor() {
         ) : null}
 
         {/* due */}
-        <T v="eyebrow" style={styles.eyebrow}>{type === 'estimate' ? 'Valid for' : 'Payment due'}</T>
+        <T v="eyebrow" style={styles.eyebrow}>{DOCS[type].pay ? 'Payment due' : 'Valid for'}</T>
         <Row style={{ flexWrap: 'wrap' }}>
           {[0, 7, 15, 30, 45].map((d) => (
             <Chip key={d} label={d === 0 ? 'On receipt' : `${d} days`} active={dueDays === d} onPress={() => setDueDays(d)} />
@@ -416,7 +412,7 @@ function ItemPicker({ visible, onClose, onPick, cur, type }: { visible: boolean;
   }, [visible, q, db]);
   const fromItem = (i: Item): InvoiceLine => ({
     item_id: i.id, name: i.name, hsn: i.hsn, unit: i.unit, qty: 1,
-    rate: type === 'purchase' ? i.purchase_price : i.sale_price, discount: 0, tax_rate: i.tax_rate, tax: 0, amount: 0,
+    rate: DOCS[type].side === 'purchase' ? i.purchase_price : i.sale_price, discount: 0, tax_rate: i.tax_rate, tax: 0, amount: 0,
   });
   return (
     <Sheet visible={visible} onClose={onClose} title="Add item">
@@ -445,7 +441,7 @@ function ItemPicker({ visible, onClose, onPick, cur, type }: { visible: boolean;
                 {i.is_service ? 'Service' : `Stock ${i.stock} ${i.unit}`}{i.tax_rate ? ` · GST ${i.tax_rate}%` : ''}
               </T>
             </View>
-            <T v="h3">{money(type === 'purchase' ? i.purchase_price : i.sale_price, cur)}</T>
+            <T v="h3">{money(DOCS[type].side === 'purchase' ? i.purchase_price : i.sale_price, cur)}</T>
           </Pressable>
         )}
       />

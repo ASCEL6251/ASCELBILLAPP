@@ -1,4 +1,12 @@
-export type DocType = 'sale' | 'estimate' | 'purchase';
+export type DocType =
+  | 'sale'
+  | 'sale_return'
+  | 'estimate'
+  | 'sale_order'
+  | 'delivery_challan'
+  | 'purchase'
+  | 'purchase_return'
+  | 'purchase_order';
 
 export interface Business {
   id: number;

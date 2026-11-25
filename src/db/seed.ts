@@ -72,7 +72,7 @@ export async function seedDemo(db: SQLiteDatabase) {
     { type: 'purchase', p: 5, lines: [{ ...line(0, 10), rate: 980 }], date: addDays(t, -15), paid: 'part', template: 'ledger', color: '#1D1F20' },
   ];
 
-  let n = { sale: 0, estimate: 0, purchase: 0 };
+  const n: Record<string, number> = { sale: 0, estimate: 0, purchase: 0 };
   for (const d of [...docs].reverse()) {
     n[d.type]++;
     const tot = computeTotals(d.lines, { roundOff: true });
